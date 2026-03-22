@@ -46,10 +46,22 @@ export const getAgentVersion = (): string => {
 
 export const createMcpServer = (): McpServer => {
 
-	const server = new McpServer({
-		name: "mobile-mcp",
-		version: getAgentVersion(),
-	});
+	const server = new McpServer(
+		{
+			name: "mobile-mcp",
+			version: getAgentVersion(),
+		},
+		{
+			instructions: [
+				"You are controlling a mobile device through MCP tools.",
+				"IMPORTANT: Always prefer `mobile_list_elements_on_screen` over `mobile_take_screenshot` to understand what is on screen.",
+				"The accessibility tree (elements list) is significantly more reliable than screenshots for identifying and interacting with UI elements.",
+				"Use screenshots only as a fallback when elements do not provide enough context (e.g. visual layout, images, or non-labeled content).",
+				"When tapping or interacting with elements, use coordinates from the elements list rather than guessing from screenshots.",
+				"Do not cache element lists or screenshots — screen state changes after every action.",
+			].join(" "),
+		},
+	);
 
 
 	const getClientName = (): string => {
