@@ -15,6 +15,7 @@ import { isScalingAvailable, Image } from "./image-utils";
 import { Mobilecli } from "./mobilecli";
 import { MobileDevice } from "./mobile-device";
 import { validateOutputPath, validateFileExtension } from "./utils";
+import { registerTestingTools } from "./testing/tools";
 
 const ALLOWED_SCREENSHOT_EXTENSIONS = [".png", ".jpg", ".jpeg"];
 const ALLOWED_RECORDING_EXTENSIONS = [".mp4"];
@@ -143,6 +144,7 @@ export const createMcpServer = (): McpServer => {
 
 	const mobilecli = new Mobilecli();
 	const activeRecordings = new Map<string, ActiveRecording>();
+	const robotOverrides = new Map<string, Robot>();
 	posthog("launch", {}).then();
 
 	const ensureMobilecliAvailable = (): void => {
@@ -157,6 +159,8 @@ export const createMcpServer = (): McpServer => {
 	};
 
 	const getRobotFromDevice = (deviceId: string): Robot => {
+		const override = robotOverrides.get(deviceId);
+		if (override) {return override;}
 
 		// from now on, we must have mobilecli working
 		ensureMobilecliAvailable();
@@ -791,6 +795,10 @@ export const createMcpServer = (): McpServer => {
 			return `Recording stopped. File: ${outputPath} (${fileSizeMB} MB, ~${durationSeconds}s)`;
 		}
 	);
+
+	if (process.env.MOBILE_TESTING === "1") {
+		registerTestingTools({ tool, getRobotFromDevice, robotOverrides });
+	}
 
 	return server;
 };
