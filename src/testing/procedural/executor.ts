@@ -107,6 +107,11 @@ export class ScriptExecutor {
 							step.timeoutMs,
 						);
 
+						// Wait for UI to settle after the action
+						if (step.delayAfterMs > 0) {
+							await new Promise(r => setTimeout(r, step.delayAfterMs));
+						}
+
 						// Evaluate assertions
 						if (step.assertions.length > 0) {
 							const elements = await robot.getElementsOnScreen();

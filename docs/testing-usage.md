@@ -354,6 +354,53 @@ Assertions verify screen state after a step executes. Add them to a script befor
 
 ---
 
+## 6. Step Delays
+
+When replaying scripts, each step includes a delay after execution to give the UI time to respond (animations, network loads, screen transitions). Smart defaults are set automatically based on action type when scripts are built from recordings:
+
+| Action Type | Default Delay |
+|---|---|
+| `tap` | 1000ms |
+| `doubleTap` | 1000ms |
+| `longPress` | 1000ms |
+| `swipe` | 800ms |
+| `sendKeys` | 500ms |
+| `pressButton` | 800ms |
+| `launchApp` | 2000ms |
+| `terminateApp` | 1000ms |
+| `openUrl` | 2000ms |
+| `setOrientation` | 1000ms |
+
+### Override a step's delay
+
+```json
+// mobile_test_set_step_delay
+{
+  "scriptId": "script-id",
+  "stepSequence": 3,
+  "delayMs": 3000
+}
+// Returns: { "scriptId": "...", "stepSequence": 3, "delayMs": 3000, "stepsUpdated": 1 }
+```
+
+### Set delay for all steps at once
+
+Use `stepSequence: 0` to apply the same delay to every step:
+
+```json
+// mobile_test_set_step_delay
+{
+  "scriptId": "script-id",
+  "stepSequence": 0,
+  "delayMs": 2000
+}
+// Returns: { "scriptId": "...", "stepSequence": "all", "delayMs": 2000, "stepsUpdated": 12 }
+```
+
+Set `delayMs: 0` to disable delays entirely (useful for speed testing).
+
+---
+
 ## End-to-End Example
 
 Here's a complete workflow: record a login flow, add assertions, then replay it.
@@ -414,3 +461,4 @@ Here's a complete workflow: record a login flow, add assertions, then replay it.
 | `mobile_test_get_report` | Procedural | Get full test report |
 | `mobile_test_list_reports` | Procedural | List all test reports |
 | `mobile_test_add_assertion` | Procedural | Add assertion to a script step |
+| `mobile_test_set_step_delay` | Procedural | Set delay after a step (or all steps) |

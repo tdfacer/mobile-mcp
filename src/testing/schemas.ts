@@ -136,7 +136,23 @@ export interface TestScriptStep {
 	targetElement?: ElementMatcher;
 	assertions: StepAssertion[];
 	timeoutMs: number;
+	delayAfterMs: number;
 }
+
+// Default delays (ms) applied after each action type during script building.
+// Gives the UI time to respond before the next step executes.
+export const DEFAULT_ACTION_DELAYS: Record<ActionType, number> = {
+	tap: 1000,
+	doubleTap: 1000,
+	longPress: 1000,
+	swipe: 800,
+	sendKeys: 500,
+	pressButton: 800,
+	launchApp: 2000,
+	terminateApp: 1000,
+	openUrl: 2000,
+	setOrientation: 1000,
+};
 
 // ---------------------------------------------------------------------------
 // Test Report — results from a monkey or procedural test run

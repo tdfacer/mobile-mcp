@@ -468,4 +468,49 @@ export function registerTestingTools(deps: {
 			});
 		}
 	);
+
+	tool(
+		"mobile_test_set_step_delay",
+		"Set Step Delay",
+		"Set the delay (in milliseconds) that occurs after a test script step executes, before the next step begins. This gives the UI time to settle after actions like taps or navigation. Steps have automatic defaults based on action type (e.g. 1000ms after tap, 2000ms after launchApp), but you can override them here.",
+		{
+			scriptId: z.string().describe("The script ID"),
+			stepSequence: z.coerce.number().describe("The step sequence number (1-based) to set the delay on. Use 0 to set the delay on all steps."),
+			delayMs: z.coerce.number().describe("Delay in milliseconds after the step executes (0 to disable delay)"),
+		},
+		{ destructiveHint: true },
+		async ({ scriptId, stepSequence, delayMs }) => {
+			const script = store.getScript(scriptId);
+			if (!script) {
+				return JSON.stringify({ error: `Script "${scriptId}" not found` });
+			}
+
+			const steps = store.getStepsForScript(scriptId);
+
+			if (stepSequence === 0) {
+				// Apply to all steps
+				for (const s of steps) {
+					s.delayAfterMs = delayMs;
+				}
+			} else {
+				const step = steps.find(s => s.sequenceNumber === stepSequence);
+				if (!step) {
+					return JSON.stringify({ error: `Step ${stepSequence} not found in script "${scriptId}"` });
+				}
+				step.delayAfterMs = delayMs;
+			}
+
+			store.deleteStepsForScript(scriptId);
+			for (const s of steps) {
+				store.createStep(s);
+			}
+
+			return JSON.stringify({
+				scriptId,
+				stepSequence: stepSequence === 0 ? "all" : stepSequence,
+				delayMs,
+				stepsUpdated: stepSequence === 0 ? steps.length : 1,
+			});
+		}
+	);
 }

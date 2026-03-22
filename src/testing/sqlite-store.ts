@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS steps (
 	params TEXT NOT NULL,
 	target_element TEXT,
 	assertions TEXT NOT NULL DEFAULT '[]',
-	timeout_ms INTEGER NOT NULL DEFAULT 5000
+	timeout_ms INTEGER NOT NULL DEFAULT 5000,
+	delay_after_ms INTEGER NOT NULL DEFAULT 1000
 );
 CREATE INDEX IF NOT EXISTS idx_steps_script ON steps(script_id, sequence_number);
 
@@ -113,6 +114,15 @@ export class SqliteStore implements TestStore {
 		this.db = new Database(resolvedPath);
 		this.db.pragma("journal_mode = WAL");
 		this.db.exec(SCHEMA_SQL);
+		this.migrate();
+	}
+
+	private migrate(): void {
+		// Add delay_after_ms column if missing (added after initial release)
+		const columns = this.db.pragma("table_info(steps)") as { name: string }[];
+		if (columns.length > 0 && !columns.some(c => c.name === "delay_after_ms")) {
+			this.db.exec("ALTER TABLE steps ADD COLUMN delay_after_ms INTEGER NOT NULL DEFAULT 1000");
+		}
 	}
 
 	// --- Sessions ---
@@ -277,13 +287,13 @@ export class SqliteStore implements TestStore {
 
 	createStep(step: TestScriptStep): void {
 		this.db.prepare(`
-			INSERT INTO steps (id, script_id, sequence_number, action_type, params, target_element, assertions, timeout_ms)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO steps (id, script_id, sequence_number, action_type, params, target_element, assertions, timeout_ms, delay_after_ms)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`).run(
 			step.id, step.scriptId, step.sequenceNumber,
 			step.actionType, JSON.stringify(step.params),
 			step.targetElement ? JSON.stringify(step.targetElement) : null,
-			JSON.stringify(step.assertions), step.timeoutMs,
+			JSON.stringify(step.assertions), step.timeoutMs, step.delayAfterMs,
 		);
 	}
 
@@ -308,6 +318,7 @@ export class SqliteStore implements TestStore {
 			targetElement: row.target_element ? JSON.parse(row.target_element) as ElementMatcher : undefined,
 			assertions: JSON.parse(row.assertions) as StepAssertion[],
 			timeoutMs: row.timeout_ms,
+			delayAfterMs: row.delay_after_ms ?? 1000,
 		};
 	}
 

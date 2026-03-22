@@ -160,7 +160,7 @@ describe("SqliteStore", () => {
 			store.createStep({
 				id: "step-1", scriptId: "script-1", sequenceNumber: 1,
 				actionType: "tap", params: { x: 0, y: 0 },
-				assertions: [], timeoutMs: 5000,
+				assertions: [], timeoutMs: 5000, delayAfterMs: 1000,
 			});
 			store.deleteScript("script-1");
 			assert.equal(store.getScript("script-1"), undefined);
@@ -181,13 +181,13 @@ describe("SqliteStore", () => {
 				id: "step-2", scriptId: "script-1", sequenceNumber: 2,
 				actionType: "sendKeys", params: { text: "hello", submit: true },
 				assertions: [{ type: "screenContainsText", params: { text: "hello" }, soft: false }],
-				timeoutMs: 10000,
+				timeoutMs: 10000, delayAfterMs: 500,
 			});
 			store.createStep({
 				id: "step-1", scriptId: "script-1", sequenceNumber: 1,
 				actionType: "tap", params: { x: 100, y: 200 },
 				targetElement: { identifier: "login_button", type: "Button" },
-				assertions: [], timeoutMs: 5000,
+				assertions: [], timeoutMs: 5000, delayAfterMs: 1000,
 			});
 
 			const steps = store.getStepsForScript("script-1");
@@ -204,7 +204,7 @@ describe("SqliteStore", () => {
 			store.createStep({
 				id: "step-1", scriptId: "script-1", sequenceNumber: 1,
 				actionType: "tap", params: { x: 0, y: 0 },
-				assertions: [], timeoutMs: 5000,
+				assertions: [], timeoutMs: 5000, delayAfterMs: 1000,
 			});
 			store.deleteStepsForScript("script-1");
 			assert.equal(store.getStepsForScript("script-1").length, 0);

@@ -363,6 +363,9 @@ export class AndroidRobot implements Robot {
 	public async getElementsOnScreen(): Promise<ScreenElement[]> {
 		const parsedXml = await this.getUiAutomatorXml();
 		const hierarchy = parsedXml.hierarchy;
+		if (!hierarchy?.node) {
+			return [];
+		}
 		const elements = this.collectElements(hierarchy.node);
 		return elements;
 	}

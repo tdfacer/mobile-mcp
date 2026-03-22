@@ -103,8 +103,10 @@ export class RecordingRobot implements Robot {
 		this.sequenceNumber++;
 		const seq = this.sequenceNumber;
 
-		const elementsBefore = this.captureElements
-			? await this.inner.getElementsOnScreen() : undefined;
+		let elementsBefore: ScreenElement[] | undefined;
+		if (this.captureElements) {
+			try { elementsBefore = await this.inner.getElementsOnScreen(); } catch { /* best effort */ }
+		}
 
 		const start = Date.now();
 		let result: "success" | "error" = "success";
@@ -118,8 +120,10 @@ export class RecordingRobot implements Robot {
 			throw e;
 		} finally {
 			const durationMs = Date.now() - start;
-			const elementsAfter = this.captureElements
-				? await this.inner.getElementsOnScreen() : undefined;
+			let elementsAfter: ScreenElement[] | undefined;
+			if (this.captureElements) {
+				try { elementsAfter = await this.inner.getElementsOnScreen(); } catch { /* best effort */ }
+			}
 
 			const action: TestAction = {
 				id: crypto.randomUUID(),

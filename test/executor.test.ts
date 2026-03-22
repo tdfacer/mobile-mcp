@@ -95,8 +95,8 @@ describe("ScriptExecutor", () => {
 
 	it("should execute a simple script with all steps passing", async () => {
 		const steps: TestScriptStep[] = [
-			{ id: "s1", scriptId: "script-1", sequenceNumber: 1, actionType: "tap", params: { x: 200, y: 530 }, assertions: [], timeoutMs: 5000 },
-			{ id: "s2", scriptId: "script-1", sequenceNumber: 2, actionType: "swipe", params: { direction: "up" as const }, assertions: [], timeoutMs: 5000 },
+			{ id: "s1", scriptId: "script-1", sequenceNumber: 1, actionType: "tap", params: { x: 200, y: 530 }, assertions: [], timeoutMs: 5000, delayAfterMs: 0 },
+			{ id: "s2", scriptId: "script-1", sequenceNumber: 2, actionType: "swipe", params: { direction: "up" as const }, assertions: [], timeoutMs: 5000, delayAfterMs: 0 },
 		];
 
 		const reportId = await executor.execute({
@@ -126,7 +126,7 @@ describe("ScriptExecutor", () => {
 				params: { x: 999, y: 999 }, // Original coordinates (different from element)
 				targetElement: { identifier: "login_btn" },
 				assertions: [],
-				timeoutMs: 5000,
+				timeoutMs: 5000, delayAfterMs: 0,
 			},
 		];
 
@@ -145,13 +145,13 @@ describe("ScriptExecutor", () => {
 				id: "s1", scriptId: "script-1", sequenceNumber: 1,
 				actionType: "tap", params: { x: 200, y: 530 },
 				assertions: [{ type: "elementExists", params: { identifier: "nonexistent" }, soft: false }],
-				timeoutMs: 5000,
+				timeoutMs: 5000, delayAfterMs: 0,
 			},
 			{
 				id: "s2", scriptId: "script-1", sequenceNumber: 2,
 				actionType: "tap", params: { x: 100, y: 100 },
 				assertions: [],
-				timeoutMs: 5000,
+				timeoutMs: 5000, delayAfterMs: 0,
 			},
 		];
 
@@ -172,13 +172,13 @@ describe("ScriptExecutor", () => {
 				id: "s1", scriptId: "script-1", sequenceNumber: 1,
 				actionType: "tap", params: { x: 200, y: 530 },
 				assertions: [{ type: "elementExists", params: { identifier: "nonexistent" }, soft: true }],
-				timeoutMs: 5000,
+				timeoutMs: 5000, delayAfterMs: 0,
 			},
 			{
 				id: "s2", scriptId: "script-1", sequenceNumber: 2,
 				actionType: "swipe", params: { direction: "up" as const },
 				assertions: [],
-				timeoutMs: 5000,
+				timeoutMs: 5000, delayAfterMs: 0,
 			},
 		];
 
@@ -193,7 +193,7 @@ describe("ScriptExecutor", () => {
 
 	it("should prevent duplicate runs on same device", async () => {
 		const steps: TestScriptStep[] = [
-			{ id: "s1", scriptId: "script-1", sequenceNumber: 1, actionType: "tap", params: { x: 100, y: 200 }, assertions: [], timeoutMs: 5000 },
+			{ id: "s1", scriptId: "script-1", sequenceNumber: 1, actionType: "tap", params: { x: 100, y: 200 }, assertions: [], timeoutMs: 5000, delayAfterMs: 0 },
 		];
 
 		await executor.execute({ script, steps, deviceId: "d1", robot: createMockRobot() });

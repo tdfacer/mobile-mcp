@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import {
 	TestAction, TestScript, TestScriptStep, ElementMatcher,
-	TapParams, DoubleTapParams, LongPressParams,
+	TapParams, DoubleTapParams, LongPressParams, DEFAULT_ACTION_DELAYS,
 } from "./schemas";
 import { TestStore } from "./store";
 import { ScreenElement, ScreenSize } from "../robot";
@@ -50,6 +50,7 @@ export class ScriptBuilder {
 				targetElement: this.buildElementMatcher(action, opts.screenSize),
 				assertions: [],
 				timeoutMs: Math.max(5000, action.durationMs * 3),
+				delayAfterMs: DEFAULT_ACTION_DELAYS[action.type] ?? 1000,
 			};
 			this.store.createStep(step);
 		}
