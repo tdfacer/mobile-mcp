@@ -1,4 +1,5 @@
 import { z } from "zod";
+import crypto from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 
@@ -314,6 +315,53 @@ export function registerTestingTools(deps: {
 		}
 	);
 
+	tool(
+		"mobile_script_import",
+		"Import Test Script",
+		"Import a test script from a JSON blob (as produced by mobile_script_export). Creates a new script with a new ID, preserving all steps and assertions.",
+		{
+			json: z.string().describe("The JSON string from mobile_script_export"),
+		},
+		{ destructiveHint: true },
+		async ({ json }) => {
+			let data: any;
+			try {
+				data = JSON.parse(json);
+			} catch {
+				return JSON.stringify({ error: "Invalid JSON" });
+			}
+
+			if (!data.script || !Array.isArray(data.steps)) {
+				return JSON.stringify({ error: "Invalid format: expected { script, steps } from mobile_script_export" });
+			}
+
+			const newScriptId = crypto.randomUUID();
+			const now = Date.now();
+			const script = {
+				...data.script,
+				id: newScriptId,
+				createdAt: now,
+				updatedAt: now,
+			};
+			store.createScript(script);
+
+			for (const step of data.steps) {
+				store.createStep({
+					...step,
+					id: crypto.randomUUID(),
+					scriptId: newScriptId,
+				});
+			}
+
+			const steps = store.getStepsForScript(newScriptId);
+			return JSON.stringify({
+				scriptId: newScriptId,
+				name: script.name,
+				stepCount: steps.length,
+			});
+		}
+	);
+
 	// -----------------------------------------------------------------------
 	// Procedural testing tools
 	// -----------------------------------------------------------------------
@@ -337,8 +385,9 @@ export function registerTestingTools(deps: {
 			if (steps.length === 0) {
 				return JSON.stringify({ error: `Script "${scriptId}" has no steps` });
 			}
+			const crashDetector = new AndroidCrashDetector(device);
 			const reportId = await scriptExecutor.execute({
-				script, steps, deviceId: device, robot,
+				script, steps, deviceId: device, robot, crashDetector,
 			});
 			return JSON.stringify({ reportId, status: "running", stepCount: steps.length });
 		}
@@ -511,6 +560,186 @@ export function registerTestingTools(deps: {
 				delayMs,
 				stepsUpdated: stepSequence === 0 ? steps.length : 1,
 			});
+		}
+	);
+
+	// -----------------------------------------------------------------------
+	// Script step editing tools
+	// -----------------------------------------------------------------------
+
+	tool(
+		"mobile_script_delete_step",
+		"Delete Script Step",
+		"Delete a step from a test script. Remaining steps are renumbered automatically.",
+		{
+			scriptId: z.string().describe("The script ID"),
+			stepSequence: z.coerce.number().describe("The step sequence number (1-based) to delete"),
+		},
+		{ destructiveHint: true },
+		async ({ scriptId, stepSequence }) => {
+			const script = store.getScript(scriptId);
+			if (!script) {
+				return JSON.stringify({ error: `Script "${scriptId}" not found` });
+			}
+
+			const steps = store.getStepsForScript(scriptId);
+			const idx = steps.findIndex(s => s.sequenceNumber === stepSequence);
+			if (idx === -1) {
+				return JSON.stringify({ error: `Step ${stepSequence} not found in script "${scriptId}"` });
+			}
+
+			steps.splice(idx, 1);
+			// Renumber
+			for (let i = 0; i < steps.length; i++) {
+				steps[i].sequenceNumber = i + 1;
+			}
+
+			store.deleteStepsForScript(scriptId);
+			for (const s of steps) {
+				store.createStep(s);
+			}
+
+			return JSON.stringify({ scriptId, deletedStep: stepSequence, remainingSteps: steps.length });
+		}
+	);
+
+	tool(
+		"mobile_script_move_step",
+		"Move Script Step",
+		"Move a step to a new position in the script. Other steps are renumbered automatically.",
+		{
+			scriptId: z.string().describe("The script ID"),
+			fromSequence: z.coerce.number().describe("The current step sequence number (1-based)"),
+			toSequence: z.coerce.number().describe("The target position (1-based)"),
+		},
+		{ destructiveHint: true },
+		async ({ scriptId, fromSequence, toSequence }) => {
+			const script = store.getScript(scriptId);
+			if (!script) {
+				return JSON.stringify({ error: `Script "${scriptId}" not found` });
+			}
+
+			const steps = store.getStepsForScript(scriptId);
+			const fromIdx = steps.findIndex(s => s.sequenceNumber === fromSequence);
+			if (fromIdx === -1) {
+				return JSON.stringify({ error: `Step ${fromSequence} not found in script "${scriptId}"` });
+			}
+			if (toSequence < 1 || toSequence > steps.length) {
+				return JSON.stringify({ error: `Target position ${toSequence} is out of range (1-${steps.length})` });
+			}
+
+			const [step] = steps.splice(fromIdx, 1);
+			steps.splice(toSequence - 1, 0, step);
+
+			for (let i = 0; i < steps.length; i++) {
+				steps[i].sequenceNumber = i + 1;
+			}
+
+			store.deleteStepsForScript(scriptId);
+			for (const s of steps) {
+				store.createStep(s);
+			}
+
+			return JSON.stringify({ scriptId, movedStep: fromSequence, newPosition: toSequence, totalSteps: steps.length });
+		}
+	);
+
+	tool(
+		"mobile_script_update_step",
+		"Update Script Step",
+		"Update the parameters of a script step (e.g. change tap coordinates, text input, or timeout).",
+		{
+			scriptId: z.string().describe("The script ID"),
+			stepSequence: z.coerce.number().describe("The step sequence number (1-based) to update"),
+			params: z.string().optional().describe("JSON-encoded new action parameters to merge (e.g. '{\"x\": 200, \"y\": 500}')"),
+			timeoutMs: z.coerce.number().optional().describe("New timeout in milliseconds"),
+			delayAfterMs: z.coerce.number().optional().describe("New delay after step in milliseconds"),
+		},
+		{ destructiveHint: true },
+		async ({ scriptId, stepSequence, params, timeoutMs, delayAfterMs }) => {
+			const script = store.getScript(scriptId);
+			if (!script) {
+				return JSON.stringify({ error: `Script "${scriptId}" not found` });
+			}
+
+			const steps = store.getStepsForScript(scriptId);
+			const step = steps.find(s => s.sequenceNumber === stepSequence);
+			if (!step) {
+				return JSON.stringify({ error: `Step ${stepSequence} not found in script "${scriptId}"` });
+			}
+
+			if (params !== undefined) {
+				let parsedParams: Record<string, unknown>;
+				try {
+					parsedParams = JSON.parse(params);
+				} catch {
+					return JSON.stringify({ error: "Invalid JSON in params" });
+				}
+				step.params = { ...step.params, ...parsedParams } as any;
+			}
+			if (timeoutMs !== undefined) {
+				step.timeoutMs = timeoutMs;
+			}
+			if (delayAfterMs !== undefined) {
+				step.delayAfterMs = delayAfterMs;
+			}
+
+			store.deleteStepsForScript(scriptId);
+			for (const s of steps) {
+				store.createStep(s);
+			}
+
+			return JSON.stringify({ scriptId, stepSequence, updated: true });
+		}
+	);
+
+	tool(
+		"mobile_test_add_wait",
+		"Add Wait-for-Element",
+		"Add a wait-for-element condition to a script step. Before the step executes, the executor will poll until the specified element appears on screen (up to the step's timeoutMs). This replaces fixed delays with dynamic waiting for screens to load.",
+		{
+			scriptId: z.string().describe("The script ID"),
+			stepSequence: z.coerce.number().describe("The step sequence number (1-based) to add the wait to"),
+			identifier: z.string().optional().describe("Wait for element with this accessibility identifier (resource-id on Android)"),
+			text: z.string().optional().describe("Wait for element containing this text"),
+			type: z.string().optional().describe("Element type to match (e.g. 'Button', 'TextField'). Combines with text or label for more precise matching."),
+			label: z.string().optional().describe("Wait for element with this accessibility label (content-desc on Android)"),
+			timeoutMs: z.coerce.number().optional().describe("Override the step's timeout for waiting (default: use existing step timeoutMs)"),
+		},
+		{ destructiveHint: true },
+		async ({ scriptId, stepSequence, identifier, text, type: elemType, label, timeoutMs }) => {
+			const script = store.getScript(scriptId);
+			if (!script) {
+				return JSON.stringify({ error: `Script "${scriptId}" not found` });
+			}
+
+			const steps = store.getStepsForScript(scriptId);
+			const step = steps.find(s => s.sequenceNumber === stepSequence);
+			if (!step) {
+				return JSON.stringify({ error: `Step ${stepSequence} not found in script "${scriptId}"` });
+			}
+
+			if (!identifier && !text && !label) {
+				return JSON.stringify({ error: "At least one of identifier, text, or label is required" });
+			}
+
+			const matcher: any = {};
+			if (identifier) {matcher.identifier = identifier;}
+			if (text) {matcher.text = text;}
+			if (elemType) {matcher.type = elemType;}
+			if (label) {matcher.label = label;}
+
+			step.waitForElement = matcher;
+			if (timeoutMs !== undefined) {
+				step.timeoutMs = timeoutMs;
+			}
+
+			store.deleteStepsForScript(scriptId);
+			for (const s of steps) {
+				store.createStep(s);
+			}
+
+			return JSON.stringify({ scriptId, stepSequence, waitForElement: matcher });
 		}
 	);
 }

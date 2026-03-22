@@ -2,7 +2,7 @@
 
 > Requires `MOBILE_TESTING=1` environment variable to be set when starting the MCP server.
 
-This guide shows how to use the 18 testing MCP tools. All examples assume you have a connected Android device. Replace `device` values with your actual device identifier (e.g. `emulator-5554`).
+This guide shows how to use the 24 testing MCP tools. All examples assume you have a connected Android device. Replace `device` values with your actual device identifier (e.g. `emulator-5554`).
 
 ---
 
@@ -223,10 +223,14 @@ Procedural testing replays a saved script, re-targeting elements by their attrib
 ```
 
 The executor runs in the background. For each step it:
-1. Finds the target element using a 7-level priority chain (identifier > label+type > text+type > text > label > name > relative coords)
-2. Waits up to `timeoutMs` for the element to appear (polls every 500ms)
+1. Waits for any `waitForElement` condition to be satisfied (if set)
+2. Finds the target element using a 7-level priority chain (identifier > label+type > text+type > text > label > name > relative coords)
 3. Executes the action
-4. Runs any assertions attached to the step
+4. Waits `delayAfterMs` for the UI to settle
+5. Checks for crashes, ANRs, and error dialogs (via ADB on Android)
+6. Runs any assertions attached to the step
+
+Crash detection runs automatically on every step — if the app crashes or an error dialog appears, execution stops immediately and the report captures the error details. This uses the same `CrashDetector` as monkey testing (checks foreground app, error dialogs via `dumpsys`, and logcat for fatal exceptions).
 
 ### Check execution progress
 
@@ -296,9 +300,65 @@ The executor runs in the background. For each step it:
 // Returns: { "version": 1, "script": {...}, "steps": [...] }
 ```
 
+### Import a script from JSON
+
+Restores a script previously exported with `mobile_script_export`. The script gets a new ID so it won't conflict with existing scripts.
+
+```json
+// mobile_script_import
+{ "json": "{\"version\":1,\"script\":{...},\"steps\":[...]}" }
+// Returns: { "scriptId": "new-id", "name": "Login Flow", "stepCount": 12 }
+```
+
+This enables sharing scripts between machines, backing up test suites, and restoring from version control.
+
 ---
 
-## 5. Adding Assertions
+## 5. Script Step Editing
+
+After building a script from a recording, you can modify individual steps without re-recording the entire flow.
+
+### Delete a step
+
+Removes a step and automatically renumbers the remaining steps.
+
+```json
+// mobile_script_delete_step
+{ "scriptId": "script-id", "stepSequence": 3 }
+// Returns: { "scriptId": "...", "deletedStep": 3, "remainingSteps": 11 }
+```
+
+### Move a step
+
+Reorder a step to a different position. All steps are renumbered automatically.
+
+```json
+// mobile_script_move_step
+{ "scriptId": "script-id", "fromSequence": 5, "toSequence": 2 }
+// Returns: { "scriptId": "...", "movedStep": 5, "newPosition": 2, "totalSteps": 12 }
+```
+
+### Update step parameters
+
+Change a step's action parameters (e.g. tap coordinates, input text), timeout, or delay without deleting and recreating it.
+
+```json
+// mobile_script_update_step
+{
+  "scriptId": "script-id",
+  "stepSequence": 3,
+  "params": "{\"x\": 200, \"y\": 500}",
+  "timeoutMs": 10000,
+  "delayAfterMs": 2000
+}
+// Returns: { "scriptId": "...", "stepSequence": 3, "updated": true }
+```
+
+All fields except `scriptId` and `stepSequence` are optional — only specify what you want to change.
+
+---
+
+## 6. Adding Assertions
 
 Assertions verify screen state after a step executes. Add them to a script before running it.
 
@@ -354,7 +414,50 @@ Assertions verify screen state after a step executes. Add them to a script befor
 
 ---
 
-## 6. Step Delays
+## 7. Wait-for-Element
+
+Fixed delays work for predictable transitions, but some screens take variable time to load (network requests, animations, app startup). `mobile_test_add_wait` attaches a wait-for-element condition to a step — the executor polls every 500ms until the element appears before executing the step's action.
+
+### Add a wait condition
+
+```json
+// mobile_test_add_wait
+{
+  "scriptId": "script-id",
+  "stepSequence": 3,
+  "identifier": "search_results_list"
+}
+// Returns: { "scriptId": "...", "stepSequence": 3, "waitForElement": { "identifier": "search_results_list" } }
+```
+
+You can match by any combination of:
+
+| Parameter | Description |
+|---|---|
+| `identifier` | Accessibility identifier (`resource-id` on Android) |
+| `text` | Visible text content |
+| `label` | Accessibility label (`content-desc` on Android) |
+| `type` | Element type (e.g. `Button`, `TextField`). Combines with `text` or `label` for precise matching. |
+| `timeoutMs` | Override the step's timeout for this wait (optional) |
+
+At least one of `identifier`, `text`, or `label` is required.
+
+### When to use wait-for-element vs delays
+
+- **Fixed delay** (`delayAfterMs`): Use for predictable, short transitions — button animations, keyboard appearance, tab switches.
+- **Wait-for-element**: Use when the next screen depends on something unpredictable — network responses, app launches, search results loading, content rendering.
+
+### Example: wait for search results before tapping
+
+```
+mobile_test_add_wait  { scriptId: "xyz", stepSequence: 4, text: "Search results", timeoutMs: 15000 }
+```
+
+Step 4 will now wait up to 15 seconds for an element containing "Search results" before executing. If it doesn't appear, the step fails with a timeout error.
+
+---
+
+## 8. Step Delays
 
 When replaying scripts, each step includes a delay after execution to give the UI time to respond (animations, network loads, screen transitions). Smart defaults are set automatically based on action type when scripts are built from recordings:
 
@@ -440,9 +543,9 @@ Here's a complete workflow: record a login flow, add assertions, then replay it.
 
 ---
 
-## Tool Reference
+## Tool Reference (24 tools)
 
-| Tool | Mode | Description |
+| Tool | Category | Description |
 |---|---|---|
 | `mobile_monkey_start` | Monkey | Start random action testing |
 | `mobile_monkey_status` | Monkey | Check monkey test progress |
@@ -454,11 +557,16 @@ Here's a complete workflow: record a login flow, add assertions, then replay it.
 | `mobile_script_list` | Scripts | List all saved scripts |
 | `mobile_script_get` | Scripts | View script with steps |
 | `mobile_script_delete` | Scripts | Delete a script |
-| `mobile_script_export` | Scripts | Export script as JSON |
-| `mobile_test_run_script` | Procedural | Run a script against a device |
+| `mobile_script_export` | Scripts | Export script as portable JSON |
+| `mobile_script_import` | Scripts | Import script from JSON |
+| `mobile_script_delete_step` | Editing | Delete a step from a script |
+| `mobile_script_move_step` | Editing | Reorder a step to a new position |
+| `mobile_script_update_step` | Editing | Update step params, timeout, or delay |
+| `mobile_test_run_script` | Procedural | Run a script (with crash detection) |
 | `mobile_test_run_status` | Procedural | Check script execution progress |
 | `mobile_test_stop_script` | Procedural | Stop a running script |
 | `mobile_test_get_report` | Procedural | Get full test report |
 | `mobile_test_list_reports` | Procedural | List all test reports |
 | `mobile_test_add_assertion` | Procedural | Add assertion to a script step |
 | `mobile_test_set_step_delay` | Procedural | Set delay after a step (or all steps) |
+| `mobile_test_add_wait` | Procedural | Wait for element before step executes |

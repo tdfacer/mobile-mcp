@@ -66,7 +66,8 @@ CREATE TABLE IF NOT EXISTS steps (
 	target_element TEXT,
 	assertions TEXT NOT NULL DEFAULT '[]',
 	timeout_ms INTEGER NOT NULL DEFAULT 5000,
-	delay_after_ms INTEGER NOT NULL DEFAULT 1000
+	delay_after_ms INTEGER NOT NULL DEFAULT 1000,
+	wait_for_element TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_steps_script ON steps(script_id, sequence_number);
 
@@ -118,10 +119,14 @@ export class SqliteStore implements TestStore {
 	}
 
 	private migrate(): void {
-		// Add delay_after_ms column if missing (added after initial release)
 		const columns = this.db.pragma("table_info(steps)") as { name: string }[];
-		if (columns.length > 0 && !columns.some(c => c.name === "delay_after_ms")) {
+		if (columns.length === 0) {return;}
+
+		if (!columns.some(c => c.name === "delay_after_ms")) {
 			this.db.exec("ALTER TABLE steps ADD COLUMN delay_after_ms INTEGER NOT NULL DEFAULT 1000");
+		}
+		if (!columns.some(c => c.name === "wait_for_element")) {
+			this.db.exec("ALTER TABLE steps ADD COLUMN wait_for_element TEXT");
 		}
 	}
 
@@ -287,13 +292,14 @@ export class SqliteStore implements TestStore {
 
 	createStep(step: TestScriptStep): void {
 		this.db.prepare(`
-			INSERT INTO steps (id, script_id, sequence_number, action_type, params, target_element, assertions, timeout_ms, delay_after_ms)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO steps (id, script_id, sequence_number, action_type, params, target_element, assertions, timeout_ms, delay_after_ms, wait_for_element)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`).run(
 			step.id, step.scriptId, step.sequenceNumber,
 			step.actionType, JSON.stringify(step.params),
 			step.targetElement ? JSON.stringify(step.targetElement) : null,
 			JSON.stringify(step.assertions), step.timeoutMs, step.delayAfterMs,
+			step.waitForElement ? JSON.stringify(step.waitForElement) : null,
 		);
 	}
 
@@ -319,6 +325,7 @@ export class SqliteStore implements TestStore {
 			assertions: JSON.parse(row.assertions) as StepAssertion[],
 			timeoutMs: row.timeout_ms,
 			delayAfterMs: row.delay_after_ms ?? 1000,
+			waitForElement: row.wait_for_element ? JSON.parse(row.wait_for_element) as ElementMatcher : undefined,
 		};
 	}
 

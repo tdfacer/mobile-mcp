@@ -9,6 +9,7 @@ import {
 import { Robot, Button } from "../../robot";
 import { TestStore } from "../store";
 import { SessionManager } from "../session";
+import { CrashDetector } from "../monkey/crash-detector";
 import { evaluateAssertions } from "./assertions";
 import { findElement } from "./element-matcher";
 
@@ -33,6 +34,7 @@ export class ScriptExecutor {
 		steps: TestScriptStep[];
 		deviceId: string;
 		robot: Robot;
+		crashDetector?: CrashDetector;
 	}): Promise<string> {
 		const existing = this.activeRuns.get(opts.deviceId);
 		if (existing?.running) {
@@ -89,6 +91,19 @@ export class ScriptExecutor {
 					let stepPassed = true;
 
 					try {
+						// Wait for a required element to appear before executing
+						if (step.waitForElement) {
+							const found = await waitForElement(
+								robot,
+								{ ...step, targetElement: step.waitForElement },
+								screenSize,
+								step.timeoutMs,
+							);
+							if (!found) {
+								throw new Error(`Timed out waiting for element: ${JSON.stringify(step.waitForElement)}`);
+							}
+						}
+
 						// Resolve target element coordinates
 						let adjustedParams = step.params;
 						if (step.targetElement && hasCoordinates(step.actionType)) {
@@ -110,6 +125,25 @@ export class ScriptExecutor {
 						// Wait for UI to settle after the action
 						if (step.delayAfterMs > 0) {
 							await new Promise(r => setTimeout(r, step.delayAfterMs));
+						}
+
+						// Check for crashes after the action
+						if (opts.crashDetector) {
+							const crash = opts.crashDetector.check(opts.script.appPackage);
+							if (crash) {
+								stepPassed = false;
+								this.store.addReportError(reportId, {
+									stepNumber: i + 1,
+									actionType: step.actionType,
+									message: `Crash detected: ${crash.message}`,
+									timestamp: crash.timestamp,
+								});
+								stepsFailed++;
+								this.store.updateReport(reportId, {
+									stepsExecuted: i + 1, stepsPassed, stepsFailed,
+								});
+								break;
+							}
 						}
 
 						// Evaluate assertions

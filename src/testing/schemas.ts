@@ -137,6 +137,10 @@ export interface TestScriptStep {
 	assertions: StepAssertion[];
 	timeoutMs: number;
 	delayAfterMs: number;
+
+	// If set, the executor waits until this element appears on screen before executing the step.
+	// Polls every 500ms up to timeoutMs. Useful for waiting for screens to load.
+	waitForElement?: ElementMatcher;
 }
 
 // Default delays (ms) applied after each action type during script building.
